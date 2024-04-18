@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/chrishadi/movies/internal/pkg/models"
+	"github.com/chrishadi/movies/internal/pkg/validators"
 )
 
 const (
@@ -63,13 +64,19 @@ func (h *handler) handlePostToDirectors(w http.ResponseWriter, r *http.Request) 
 	var director models.Director
 	if err := jsonapi.UnmarshalPayload(r.Body, &director); err != nil {
 		log.Printf("Cannot unmarshal director payload: %s", err)
-		respondWithErrorJSON(w, http.StatusBadRequest, errors.New("invalid director payload"))
+		respondWithErrorsJSON(w, http.StatusBadRequest, errors.New("invalid director payload"))
+		return
+	}
+
+	errs := validators.ValidateDirector(&director)
+	if len(errs) > 0 {
+		respondWithErrorsJSON(w, http.StatusBadRequest, errs...)
 		return
 	}
 
 	if result := h.db.Create(&director); result.Error != nil {
 		log.Printf("Failed to insert director into database: %s", result.Error)
-		respondWithErrorJSON(w, http.StatusInternalServerError, errors.New("oops, something went wrong"))
+		respondWithErrorsJSON(w, http.StatusInternalServerError, errors.New("oops, something went wrong"))
 		return
 	}
 
@@ -80,32 +87,35 @@ func (h *handler) handlePostToMovies(w http.ResponseWriter, r *http.Request) {
 	var movie models.Movie
 	if err := jsonapi.UnmarshalPayload(r.Body, &movie); err != nil {
 		log.Printf("Cannot unmarshal movie payload: %s", err)
-		respondWithErrorJSON(w, http.StatusBadRequest, errors.New("invalid movie payload"))
+		respondWithErrorsJSON(w, http.StatusBadRequest, errors.New("invalid movie payload"))
 		return
 	}
 
 	if result := h.db.Create(&movie); result.Error != nil {
 		log.Printf("Failed to insert movie into database: %s", result.Error)
-		respondWithErrorJSON(w, http.StatusInternalServerError, errors.New("oops, something went wrong"))
+		respondWithErrorsJSON(w, http.StatusInternalServerError, errors.New("oops, something went wrong"))
 		return
 	}
 
 	respondWithModelJSON(w, http.StatusCreated, &movie)
 }
 
-func respondWithErrorJSON(w http.ResponseWriter, code int, error error) {
-	errs := []*jsonapi.ErrorObject{
-		{
-			Detail: error.Error(),
-			Status: strconv.Itoa(code),
-		},
+func respondWithErrorsJSON(w http.ResponseWriter, code int, errs ...error) {
+	status := strconv.Itoa(code)
+	errObjs := make([]*jsonapi.ErrorObject, len(errs))
+
+	for i := range errs {
+		errObjs[i] = &jsonapi.ErrorObject{
+			Detail: errs[i].Error(),
+			Status: status,
+		}
 	}
 
 	w.Header().Set("Content-Type", jsonapi.MediaType)
 	w.WriteHeader(code)
 
-	if err := jsonapi.MarshalErrors(w, errs); err != nil {
-		log.Printf("Error marshaling error response: %s", err)
+	if err := jsonapi.MarshalErrors(w, errObjs); err != nil {
+		log.Printf("Error marshaling errors response: %s", err)
 	}
 }
 

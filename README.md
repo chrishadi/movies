@@ -41,3 +41,9 @@ Use these payloads for testing:
     }
 }
 ```
+
+Run unit tests:
+```shell
+go install github.com/onsi/ginkgo/v2/ginkgo
+ginkgo ./...
+```
